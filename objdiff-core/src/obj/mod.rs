@@ -1,16 +1,11 @@
 pub mod read;
 pub mod split_meta;
 
-use std::{
-    borrow::Cow,
-    collections::{BTreeMap, HashMap},
-    fmt,
-    path::PathBuf,
-};
+use std::{borrow::Cow, collections::BTreeMap, fmt, path::PathBuf};
 
 use filetime::FileTime;
 use flagset::{flags, FlagSet};
-use object::{RelocationFlags, SectionIndex};
+use object::RelocationFlags;
 use split_meta::SplitMeta;
 
 use crate::{arch::ObjArch, util::ReallySigned};
@@ -44,6 +39,8 @@ pub struct ObjSection {
     pub symbols: Vec<ObjSymbol>,
     pub relocations: Vec<ObjReloc>,
     pub virtual_address: Option<u64>,
+    /// Line number info (.line or .debug_line section)
+    pub line_info: BTreeMap<u64, u64>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -106,6 +103,8 @@ pub struct ObjIns {
     pub branch_dest: Option<u64>,
     /// Line number
     pub line: Option<u64>,
+    /// Formatted instruction
+    pub formatted: String,
     /// Original (unsimplified) instruction
     pub orig: Option<String>,
 }
@@ -131,8 +130,6 @@ pub struct ObjInfo {
     pub sections: Vec<ObjSection>,
     /// Common BSS symbols
     pub common: Vec<ObjSymbol>,
-    /// Line number info (.line or .debug_line section)
-    pub line_info: Option<HashMap<SectionIndex, BTreeMap<u64, u64>>>,
     /// Split object metadata (.note.split section)
     pub split_meta: Option<SplitMeta>,
 }
@@ -145,16 +142,20 @@ pub struct ObjReloc {
     pub target_section: Option<String>,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct SymbolRef {
     pub section_idx: usize,
     pub symbol_idx: usize,
 }
 
 impl ObjInfo {
-    pub fn section_symbol(&self, symbol_ref: SymbolRef) -> (&ObjSection, &ObjSymbol) {
+    pub fn section_symbol(&self, symbol_ref: SymbolRef) -> (Option<&ObjSection>, &ObjSymbol) {
+        if symbol_ref.section_idx == self.sections.len() {
+            let symbol = &self.common[symbol_ref.symbol_idx];
+            return (None, symbol);
+        }
         let section = &self.sections[symbol_ref.section_idx];
         let symbol = &section.symbols[symbol_ref.symbol_idx];
-        (section, symbol)
+        (Some(section), symbol)
     }
 }
