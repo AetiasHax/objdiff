@@ -143,7 +143,7 @@ fn run_make_cmd(config: &BuildConfig, cwd: &Path, arg: &Path) -> Result<BuildSta
         cmdline.push(' ');
         cmdline.push_str(shell_escape::escape(arg.to_string_lossy()).as_ref());
     }
-    let output = command.output().context("Failed to execute build")?;
+    let output = command.output().map_err(|e| anyhow!("Failed to execute build: {e}"))?;
     let stdout = from_utf8(&output.stdout).context("Failed to process stdout")?;
     let stderr = from_utf8(&output.stderr).context("Failed to process stderr")?;
     Ok(BuildStatus {
@@ -235,7 +235,7 @@ fn run_build(
                     total,
                     &cancel,
                 )?;
-                Some(read::read(target_path).with_context(|| {
+                Some(read::read(target_path, &config.diff_obj_config).with_context(|| {
                     format!("Failed to read object '{}'", target_path.display())
                 })?)
             }
@@ -252,7 +252,7 @@ fn run_build(
                 &cancel,
             )?;
             Some(
-                read::read(base_path)
+                read::read(base_path, &config.diff_obj_config)
                     .with_context(|| format!("Failed to read object '{}'", base_path.display()))?,
             )
         }

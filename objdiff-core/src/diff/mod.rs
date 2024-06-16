@@ -4,7 +4,7 @@ use anyhow::Result;
 
 use crate::{
     diff::{
-        code::{diff_code, no_diff_code},
+        code::{diff_code, no_diff_code, process_code_symbol},
         data::{
             diff_bss_section, diff_bss_symbol, diff_data_section, diff_data_symbol,
             diff_text_section, no_diff_symbol,
@@ -13,8 +13,8 @@ use crate::{
     obj::{ObjInfo, ObjIns, ObjSection, ObjSectionKind, ObjSymbol, SymbolRef},
 };
 
-mod code;
-mod data;
+pub mod code;
+pub mod data;
 pub mod display;
 
 #[derive(
@@ -102,6 +102,7 @@ pub struct DiffObjConfig {
     pub relax_reloc_diffs: bool,
     #[serde(default = "default_true")]
     pub space_between_args: bool,
+    pub combine_data_sections: bool,
     // x86
     pub x86_formatter: X86Formatter,
     // MIPS
@@ -114,6 +115,7 @@ impl Default for DiffObjConfig {
         Self {
             relax_reloc_diffs: false,
             space_between_args: true,
+            combine_data_sections: false,
             x86_formatter: Default::default(),
             mips_abi: Default::default(),
             mips_instr_category: Default::default(),
@@ -321,9 +323,11 @@ pub fn diff_objs(
                 let (right_obj, right_out) = right.as_mut().unwrap();
                 match section_kind {
                     ObjSectionKind::Code => {
+                        let left_code = process_code_symbol(left_obj, left_symbol_ref, config)?;
+                        let right_code = process_code_symbol(right_obj, right_symbol_ref, config)?;
                         let (left_diff, right_diff) = diff_code(
-                            left_obj,
-                            right_obj,
+                            &left_code,
+                            &right_code,
                             left_symbol_ref,
                             right_symbol_ref,
                             config,
@@ -333,9 +337,10 @@ pub fn diff_objs(
 
                         if let Some(prev_symbol_ref) = prev_symbol_ref {
                             let (prev_obj, prev_out) = prev.as_mut().unwrap();
+                            let prev_code = process_code_symbol(prev_obj, prev_symbol_ref, config)?;
                             let (_, prev_diff) = diff_code(
-                                right_obj,
-                                prev_obj,
+                                &right_code,
+                                &prev_code,
                                 right_symbol_ref,
                                 prev_symbol_ref,
                                 config,
@@ -369,8 +374,9 @@ pub fn diff_objs(
                 let (left_obj, left_out) = left.as_mut().unwrap();
                 match section_kind {
                     ObjSectionKind::Code => {
+                        let code = process_code_symbol(left_obj, left_symbol_ref, config)?;
                         *left_out.symbol_diff_mut(left_symbol_ref) =
-                            no_diff_code(left_obj, left_symbol_ref, config)?;
+                            no_diff_code(&code, left_symbol_ref)?;
                     }
                     ObjSectionKind::Data | ObjSectionKind::Bss => {
                         *left_out.symbol_diff_mut(left_symbol_ref) =
@@ -382,8 +388,9 @@ pub fn diff_objs(
                 let (right_obj, right_out) = right.as_mut().unwrap();
                 match section_kind {
                     ObjSectionKind::Code => {
+                        let code = process_code_symbol(right_obj, right_symbol_ref, config)?;
                         *right_out.symbol_diff_mut(right_symbol_ref) =
-                            no_diff_code(right_obj, right_symbol_ref, config)?;
+                            no_diff_code(&code, right_symbol_ref)?;
                     }
                     ObjSectionKind::Data | ObjSectionKind::Bss => {
                         *right_out.symbol_diff_mut(right_symbol_ref) =
